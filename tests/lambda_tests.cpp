@@ -1,7 +1,8 @@
 #include <gtest/gtest.h>
 #include "../lib/scheduler.h"
 #include <string>
-#include <vector>
+#include <algorithm>
+#include <functional>
 
 TEST(SchedulerTest, SimpleTasksNoDependendencies) {
     TTaskScheduler scheduler;
@@ -175,4 +176,119 @@ TEST(SchedulerTest, QuadraticEquation) {
     EXPECT_FLOAT_EQ(scheduler.getResult<float>(fullDiscriminant), 9.0f - 8.0f);
     EXPECT_FLOAT_EQ(scheduler.getResult<float>(root1), 2.0f);
     EXPECT_FLOAT_EQ(scheduler.getResult<float>(root2), 1.0f);
+}
+
+TEST(LambdaFunctionTest, RecursiveFibonacci) {
+    TTaskScheduler scheduler;
+    
+    std::function<int(int)> fibonacci = [&scheduler, &fibonacci](int n) {
+        if (n <= 1) return n;
+        
+        auto task1 = scheduler.add(fibonacci, n-1);
+        auto task2 = scheduler.add(fibonacci, n-2);
+        
+        auto future1 = scheduler.getFutureResult<int>(task1);
+        auto future2 = scheduler.getFutureResult<int>(task2);
+        
+        auto sumTask = scheduler.add([](int a, int b) { return a + b; }, future1, future2);
+        return scheduler.getResult<int>(sumTask);
+    };
+    
+    auto task = scheduler.add(fibonacci, 7);
+    EXPECT_EQ(scheduler.getResult<int>(task), 13);
+}
+
+TEST(LambdaFunctionTest, FunctionComposition) {
+    TTaskScheduler scheduler;
+    
+    auto double_it = [](int x) { return x * 2; };
+    auto add_ten = [](int x) { return x + 10; };
+    auto square_it = [](int x) { return x * x; };
+    
+    auto compose = [&scheduler, double_it, add_ten, square_it](int x) {
+        auto step1 = scheduler.add(double_it, x);
+        auto future1 = scheduler.getFutureResult<int>(step1);
+        
+        auto step2 = scheduler.add(add_ten, future1);
+        auto future2 = scheduler.getFutureResult<int>(step2);
+        
+        auto step3 = scheduler.add(square_it, future2);
+        return scheduler.getResult<int>(step3);
+    };
+    
+    auto task = scheduler.add(compose, 3);
+    
+    EXPECT_EQ(scheduler.getResult<int>(task), 256);
+}
+
+TEST(LambdaFunctionTest, ConditionalTaskGeneration) {
+    TTaskScheduler scheduler;
+    
+    auto generatorTask = scheduler.add([]() {
+        return std::rand() % 100;
+    });
+    
+    auto future = scheduler.getFutureResult<int>(generatorTask);
+    
+    auto conditionalTask = scheduler.add([&scheduler](int value) {
+        if (value < 50) {
+            auto smallTask = scheduler.add([](int x) { 
+                return "Small value: " + std::to_string(x); 
+            }, value);
+            return scheduler.getResult<std::string>(smallTask);
+        } else {
+            auto largeTask = scheduler.add([](int x) { 
+                return "Large value: " + std::to_string(x); 
+            }, value);
+            return scheduler.getResult<std::string>(largeTask);
+        }
+    }, future);
+    
+    auto result = scheduler.getResult<std::string>(conditionalTask);
+    
+    int generatedValue = scheduler.getResult<int>(generatorTask);
+    if (generatedValue < 50) {
+        EXPECT_EQ(result, "Small value: " + std::to_string(generatedValue));
+    } else {
+        EXPECT_EQ(result, "Large value: " + std::to_string(generatedValue));
+    }
+}
+
+TEST(LambdaFunctionTest, BubbleSortAlgorithm) {
+    TTaskScheduler scheduler;
+    
+    std::vector<int> data = {9, 1, 8, 2, 7, 3, 6, 4, 5};
+    
+    auto sortTask = scheduler.add([&scheduler](std::vector<int> arr) {
+        int n = arr.size();
+        bool swapped;
+        
+        for (int i = 0; i < n-1; i++) {
+            swapped = false;
+            
+            auto innerLoopTask = scheduler.add([&scheduler, &arr, i, n]() {
+                bool anySwap = false;
+                
+                for (int j = 0; j < n-i-1; j++) {
+                    if (arr[j] > arr[j+1]) {
+                        std::swap(arr[j], arr[j+1]);
+                        anySwap = true;
+                    }
+                }
+                
+                return anySwap;
+            });
+            
+            swapped = scheduler.getResult<bool>(innerLoopTask);
+            
+            if (!swapped) break;
+        }
+        
+        return arr;
+    }, data);
+    
+    std::vector<int> sortedData = scheduler.getResult<std::vector<int>>(sortTask);
+    
+    std::vector<int> expected = {1, 2, 3, 4, 5, 6, 7, 8, 9};
+    EXPECT_EQ(sortedData, expected);
 }
