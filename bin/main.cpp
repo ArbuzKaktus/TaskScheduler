@@ -1,6 +1,6 @@
 #include <iostream>
 
-#include "scheduler.h"
+#include "../lib/scheduler.h"
 
 struct AddNumber {
     float add(float a) const {
@@ -33,9 +33,11 @@ int main(int argc, char** argv) {
     auto id6 = scheduler.add([](float a, float v) {return v / (2 * a);}, a, scheduler.getFutureResult<float>(id4));
 
     auto id7 = scheduler.add(&AddNumber::add, add, scheduler.getFutureResult<float>(id6));
-
     scheduler.executeAll();
-
+    std::cout << "id1 = " << scheduler.getResult<float>(id1) << std::endl;
+    std::cout << "id2 = " << scheduler.getResult<float>(id2) << std::endl;
+    std::cout << "id3 = " << scheduler.getResult<float>(id3) << std::endl;
+    std::cout << "id4 = " << scheduler.getResult<float>(id4) << std::endl;
     std::cout << "x1 = " << scheduler.getResult<float>(id5) << std::endl;
     std::cout << "x2 = " << scheduler.getResult<float>(id6) << std::endl;
     std::cout << "x3 = " << scheduler.getResult<float>(id7) << std::endl;
