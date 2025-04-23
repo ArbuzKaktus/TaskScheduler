@@ -1,5 +1,6 @@
 #include "scheduler.h"
 #include <unordered_map>
+#include <stdexcept>
 
 void TTaskScheduler::executeAll() {
   try {

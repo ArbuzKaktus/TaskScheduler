@@ -157,9 +157,9 @@ public:
   }
 
   template <
-      typename ReturnType, typename ClassType, typename Arg,
+      typename ReturnType, typename ClassType, typename MethodArg, typename Arg,
       typename = std::enable_if_t<!is_future_result<std::decay_t<Arg>>::value>>
-  auto add(ReturnType (ClassType::*method)(Arg), ClassType& instance,
+  auto add(ReturnType (ClassType::*method)(MethodArg), ClassType& instance,
            Arg&& arg) {
     auto task = std::make_shared<Task<ReturnType>>(method, instance,
                                                    std::forward<Arg>(arg));
@@ -169,9 +169,9 @@ public:
   }
 
   template <
-      typename ReturnType, typename ClassType, typename Arg,
+      typename ReturnType, typename ClassType, typename MethodArg, typename Arg,
       typename = std::enable_if_t<!is_future_result<std::decay_t<Arg>>::value>>
-  auto add(ReturnType (ClassType::*method)(Arg) const, ClassType& instance,
+  auto add(ReturnType (ClassType::*method)(MethodArg) const, ClassType& instance,
            Arg&& arg) {
     auto task = std::make_shared<Task<ReturnType>>(method, instance,
                                                    std::forward<Arg>(arg));

@@ -1,7 +1,10 @@
 #include <gtest/gtest.h>
+
 #include "../lib/scheduler.h"
+
 #include <string>
 #include <stdexcept>
+#include <utility>
 
 struct TestClass {
     int multiply(int x) const { return x * factor; }
@@ -282,4 +285,21 @@ TEST(DependencyTest, GetResultCacheBehavior) {
   EXPECT_EQ(count1, 1);
   EXPECT_EQ(count2, 1);
   EXPECT_EQ(count3, 1);
+}
+
+TEST(dependecyTest, ComplexDependency) {
+    TTaskScheduler scheduler;
+    int x = 1;
+    int y = 2;
+    auto id1 = scheduler.add([](int x, int y){return x + y;}, x, x);
+    auto id2 = scheduler.add([](int x, int y){return x * y;}, scheduler.getFutureResult<int>(id1), y);
+    auto id3 = scheduler.add([](int x, int y){return x - y;}, scheduler.getFutureResult<int>(id2), scheduler.getFutureResult<int>(id1));
+    auto id4 = scheduler.add([](int x, int y){return std::make_pair(x, y);}, scheduler.getFutureResult<int>(id2), scheduler.getFutureResult<int>(id3));
+
+    scheduler.executeAll();
+
+    EXPECT_EQ(scheduler.getResult(id1), 2);
+    EXPECT_EQ(scheduler.getResult(id2), 4);
+    EXPECT_EQ(scheduler.getResult(id3), 2);
+    EXPECT_EQ(scheduler.getResult(id4), std::make_pair(4,2));
 }

@@ -2,13 +2,89 @@
 
 #include <functional>
 #include <memory>
-#include <stdexcept>
 #include <type_traits>
 #include <utility>
 #include <vector>
 
 template <typename T>
 struct is_member_function_pointer : std::is_member_function_pointer<T> {};
+
+template <typename ReturnType>
+class CallableBase {
+public:
+    virtual ~CallableBase() = default;
+    virtual ReturnType invoke() = 0;
+    virtual CallableBase* clone() const = 0;
+};
+
+template <typename ReturnType, typename CallableType>
+class CallableHolder : public CallableBase<ReturnType> {
+public:
+    explicit CallableHolder(CallableType callable) : callable_(std::move(callable)) {}
+    
+    ReturnType invoke() override {
+        return callable_();
+    }
+    
+    CallableBase<ReturnType>* clone() const override {
+        return new CallableHolder(callable_);
+    }
+    
+private:
+    CallableType callable_;
+};
+
+template <typename ReturnType>
+class Function {
+public:
+    Function() : impl_(nullptr) {}
+    
+    template <typename CallableType>
+    Function(CallableType callable) 
+        : impl_(new CallableHolder<ReturnType, CallableType>(std::move(callable))) {}
+    
+    Function(const Function& other) 
+        : impl_(other.impl_ ? other.impl_->clone() : nullptr) {}
+    
+    Function(Function&& other) noexcept : impl_(other.impl_) {
+        other.impl_ = nullptr;
+    }
+    
+    Function& operator=(const Function& other) {
+        if (this != &other) {
+            delete impl_;
+            impl_ = other.impl_ ? other.impl_->clone() : nullptr;
+        }
+        return *this;
+    }
+    
+    Function& operator=(Function&& other) noexcept {
+        if (this != &other) {
+            delete impl_;
+            impl_ = other.impl_;
+            other.impl_ = nullptr;
+        }
+        return *this;
+    }
+    
+    ~Function() {
+        delete impl_;
+    }
+    
+    ReturnType operator()() {
+        if (!impl_) {
+            throw std::bad_function_call();
+        }
+        return impl_->invoke();
+    }
+    
+    explicit operator bool() const {
+        return impl_ != nullptr;
+    }
+    
+private:
+    CallableBase<ReturnType>* impl_;
+};
 
 template <typename T> class FutureResult;
 
@@ -87,14 +163,14 @@ public:
           return (instance.*method)(getValue(future));
         }) {}
   
-  template <typename ClassType, typename Arg1>
-  Task(ReturnType (ClassType::*method)(Arg1), ClassType& instance, Arg1&& arg1)
+  template <typename ClassType, typename MethodArg, typename Arg1>
+  Task(ReturnType (ClassType::*method)(MethodArg), ClassType& instance, Arg1&& arg1)
       : callable_([method, &instance, arg1 = std::forward<Arg1>(arg1)]() {
           return (instance.*method)(getValue(arg1));
         }) {}
 
-  template <typename ClassType, typename Arg1>
-  Task(ReturnType (ClassType::*method)(Arg1) const, ClassType& instance,
+  template <typename ClassType, typename MethodArg, typename Arg1>
+  Task(ReturnType (ClassType::*method)(MethodArg) const, ClassType& instance,
        Arg1&& arg1)
       : callable_([method, &instance, arg1 = std::forward<Arg1>(arg1)]() {
           return (instance.*method)(getValue(arg1));
@@ -126,7 +202,7 @@ public:
 
   
 private:
-  std::function<ReturnType()> callable_;
+  Function<ReturnType> callable_;
   ReturnType result_;
   template <typename T> friend class FutureResult;
 
@@ -190,14 +266,14 @@ public:
           (instance.*method)(getValue(future));
         }) {}
   
-  template <typename ClassType, typename Arg1>
-  Task(void (ClassType::*method)(Arg1), ClassType& instance, Arg1&& arg1)
+  template <typename ClassType, typename MethodArg, typename Arg1>
+  Task(void (ClassType::*method)(MethodArg), ClassType& instance, Arg1&& arg1)
       : callable_([method, &instance, arg1 = std::forward<Arg1>(arg1)]() {
           (instance.*method)(getValue(arg1));
         }) {}
 
-  template <typename ClassType, typename Arg1>
-  Task(void (ClassType::*method)(Arg1) const, ClassType& instance,
+  template <typename ClassType, typename Arg1, typename MethodArg>
+  Task(void (ClassType::*method)(MethodArg) const, ClassType& instance,
        Arg1&& arg1)
       : callable_([method, &instance, arg1 = std::forward<Arg1>(arg1)]() {
           (instance.*method)(getValue(arg1));
@@ -227,7 +303,7 @@ public:
   }
 
 private:
-  std::function<void()> callable_;
+  Function<void> callable_;
 
   template <typename T>
   static const T& getValue(const FutureResult<T> &future) {
